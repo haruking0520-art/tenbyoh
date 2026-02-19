@@ -5,23 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Band Practice Mixer</title>
 <style>
-body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  background: #111;
-  color: white;
-}
-.slider { width: 80%; margin: 10px; }
-.timeline { width: 90%; margin-top: 20px; }
-button {
-  padding: 10px 20px;
-  margin: 10px;
-  font-size: 16px;
-  border-radius: 6px;
-  border: none;
-}
-.play { background: #28a745; color: white; }
-.stop { background: #dc3545; color: white; }
+body { font-family: Arial; text-align:center; background:#111; color:white; }
+.slider { width: 80%; margin:10px; }
+.timeline { width:90%; margin-top:20px; }
+button { padding:10px 20px; margin:10px; font-size:16px; border-radius:6px; border:none; cursor:pointer; }
+.play { background:#28a745; color:white; }
+.stop { background:#dc3545; color:white; }
 </style>
 </head>
 <body>
@@ -39,10 +28,9 @@ button {
 <input type="range" id="timeline" class="timeline" value="0" min="0" step="0.01">
 <br>
 <span id="timeDisplay">0:00</span>
-
 <br>
-<button class="play" onclick="playAll()">▶ Play</button>
-<button class="stop" onclick="stopAll()">■ Stop</button>
+<button class="play" id="btnPlay">▶ Play</button>
+<button class="stop" id="btnStop">■ Stop</button>
 
 <script>
 let context = null;
@@ -64,17 +52,12 @@ const files = {
   vo2: "Vo2.mp3"
 };
 
-async function initAudio() {
-
-  // ★ ここが重要：ボタン押下時に作成
-  if (!context) {
-    context = new (window.AudioContext || window.webkitAudioContext)();
-  }
-
+// mp3ロード関数
+async function loadAudio() {
+  if (!context) context = new (window.AudioContext || window.webkitAudioContext)();
   await context.resume();
 
   if (Object.keys(buffers).length === 0) {
-
     for (let key in files) {
       const response = await fetch(files[key]);
       const arrayBuffer = await response.arrayBuffer();
@@ -84,32 +67,27 @@ async function initAudio() {
       gainNodes[key].gain.value = 1;
       gainNodes[key].connect(context.destination);
     }
-
-    duration = buffers["dr"].duration;
+    duration = buffers.dr.duration;
     document.getElementById("timeline").max = duration;
   }
 }
 
+// 再生
 async function playAll() {
-
-  await initAudio();
-
+  await loadAudio();
   startTime = context.currentTime - pauseOffset;
   sources = [];
-
   for (let key in buffers) {
-    const source = context.createBufferSource();
-    source.buffer = buffers[key];
-    source.connect(gainNodes[key]);
-    source.start(0, pauseOffset);
-    sources.push(source);
+    const src = context.createBufferSource();
+    src.buffer = buffers[key];
+    src.connect(gainNodes[key]);
+    src.start(0, pauseOffset);
+    sources.push(src);
   }
-
-  if (!timer) {
-    timer = setInterval(updateTimeline, 100);
-  }
+  if (!timer) timer = setInterval(updateTimeline, 100);
 }
 
+// 停止
 function stopAll() {
   sources.forEach(s => s.stop());
   pauseOffset = 0;
@@ -119,6 +97,7 @@ function stopAll() {
   document.getElementById("timeDisplay").textContent = "0:00";
 }
 
+// タイムライン更新
 function updateTimeline() {
   const current = context.currentTime - startTime;
   pauseOffset = current;
@@ -133,12 +112,12 @@ document.getElementById("timeline").oninput = function() {
 };
 
 function formatTime(sec) {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60).toString().padStart(2, "0");
+  const m = Math.floor(sec/60);
+  const s = Math.floor(sec%60).toString().padStart(2,"0");
   return m + ":" + s;
 }
 
-// ボリューム制御
+// ボリュームスライダー
 document.getElementById("volDr").oninput = e => gainNodes.dr && (gainNodes.dr.gain.value = e.target.value);
 document.getElementById("volBa").oninput = e => gainNodes.ba && (gainNodes.ba.gain.value = e.target.value);
 document.getElementById("volGt1").oninput = e => gainNodes.gt1 && (gainNodes.gt1.gain.value = e.target.value);
@@ -146,7 +125,10 @@ document.getElementById("volGt2").oninput = e => gainNodes.gt2 && (gainNodes.gt2
 document.getElementById("volPi").oninput = e => gainNodes.pi && (gainNodes.pi.gain.value = e.target.value);
 document.getElementById("volVo1").oninput = e => gainNodes.vo1 && (gainNodes.vo1.gain.value = e.target.value);
 document.getElementById("volVo2").oninput = e => gainNodes.vo2 && (gainNodes.vo2.gain.value = e.target.value);
-</script>
 
+// ボタン押下で再生／停止
+document.getElementById("btnPlay").onclick = playAll;
+document.getElementById("btnStop").onclick = stopAll;
+</script>
 </body>
 </html>
