@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Band Practice Mixer</title>
-
 <style>
 body {
   font-family: Arial, sans-serif;
@@ -12,31 +11,15 @@ body {
   background: #111;
   color: white;
 }
-
-h2 { margin-top: 20px; }
-
-.track {
-  margin: 12px auto;
-}
-
-.slider {
-  width: 80%;
-}
-
-.timeline {
-  width: 90%;
-  margin-top: 20px;
-}
-
+.slider { width: 80%; margin: 10px; }
+.timeline { width: 90%; margin-top: 20px; }
 button {
   padding: 10px 20px;
   margin: 10px;
   font-size: 16px;
   border-radius: 6px;
   border: none;
-  cursor: pointer;
 }
-
 .play { background: #28a745; color: white; }
 .stop { background: #dc3545; color: white; }
 </style>
@@ -45,108 +28,96 @@ button {
 
 <h2>🎸 Band Practice Mixer</h2>
 
-<div class="track">Drums<br>
-<input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volDr">
-</div>
-
-<div class="track">Bass<br>
-<input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volBa">
-</div>
-
-<div class="track">Guitar 1<br>
-<input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volGt1">
-</div>
-
-<div class="track">Guitar 2<br>
-<input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volGt2">
-</div>
-
-<div class="track">Piano<br>
-<input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volPi">
-</div>
-
-<div class="track">Vocal 1<br>
-<input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volVo1">
-</div>
-
-<div class="track">Vocal 2<br>
-<input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volVo2">
-</div>
+<div>Drums<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volDr"></div>
+<div>Bass<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volBa"></div>
+<div>Guitar1<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volGt1"></div>
+<div>Guitar2<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volGt2"></div>
+<div>Piano<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volPi"></div>
+<div>Vocal1<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volVo1"></div>
+<div>Vocal2<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volVo2"></div>
 
 <input type="range" id="timeline" class="timeline" value="0" min="0" step="0.01">
 <br>
 <span id="timeDisplay">0:00</span>
 
 <br>
-
 <button class="play" onclick="playAll()">▶ Play</button>
 <button class="stop" onclick="stopAll()">■ Stop</button>
 
 <script>
-const dr = new Audio("Dr.mp3");
-const ba = new Audio("Ba.mp3");
-const gt1 = new Audio("Gt1.mp3");
-const gt2 = new Audio("Gt2.mp3");
-const pi = new Audio("Pi.mp3");
-const vo1 = new Audio("Vo1.mp3");
-const vo2 = new Audio("Vo2.mp3");
+let context;
+let buffers = {};
+let gainNodes = {};
+let sources = [];
+let startTime = 0;
+let pauseOffset = 0;
+let duration = 0;
+let timer;
 
-const tracks = [dr, ba, gt1, gt2, pi, vo1, vo2];
+const files = {
+  dr: "Dr.mp3",
+  ba: "Ba.mp3",
+  gt1: "Gt1.mp3",
+  gt2: "Gt2.mp3",
+  pi: "Pi.mp3",
+  vo1: "Vo1.mp3",
+  vo2: "Vo2.mp3"
+};
 
-const timeline = document.getElementById("timeline");
-const timeDisplay = document.getElementById("timeDisplay");
+async function loadAudio() {
+  context = new (window.AudioContext || window.webkitAudioContext)();
 
-document.getElementById("volDr").oninput = e => dr.volume = e.target.value;
-document.getElementById("volBa").oninput = e => ba.volume = e.target.value;
-document.getElementById("volGt1").oninput = e => gt1.volume = e.target.value;
-document.getElementById("volGt2").oninput = e => gt2.volume = e.target.value;
-document.getElementById("volPi").oninput = e => pi.volume = e.target.value;
-document.getElementById("volVo1").oninput = e => vo1.volume = e.target.value;
-document.getElementById("volVo2").oninput = e => vo2.volume = e.target.value;
+  for (let key in files) {
+    const response = await fetch(files[key]);
+    const arrayBuffer = await response.arrayBuffer();
+    buffers[key] = await context.decodeAudioData(arrayBuffer);
 
-let timer = null;
-
-function playAll() {
-
-  if (!dr.duration) {
-    dr.addEventListener("loadedmetadata", startPlayback, { once: true });
-  } else {
-    startPlayback();
+    gainNodes[key] = context.createGain();
+    gainNodes[key].connect(context.destination);
   }
+
+  duration = buffers["dr"].duration;
+  document.getElementById("timeline").max = duration;
 }
 
-function startPlayback() {
-  timeline.max = dr.duration;
+async function playAll() {
+  if (!context) await loadAudio();
 
-  tracks.forEach(t => {
-    t.currentTime = dr.currentTime;
-    t.play().catch(e => console.log(e));
-  });
+  await context.resume();
 
-  if (!timer) {
-    timer = setInterval(updateTimeline, 100);
+  startTime = context.currentTime - pauseOffset;
+  sources = [];
+
+  for (let key in buffers) {
+    const source = context.createBufferSource();
+    source.buffer = buffers[key];
+    source.connect(gainNodes[key]);
+    source.start(0, pauseOffset);
+    sources.push(source);
   }
+
+  timer = setInterval(updateTimeline, 100);
 }
 
 function stopAll() {
-  tracks.forEach(t => {
-    t.pause();
-    t.currentTime = 0;
-  });
-
+  sources.forEach(s => s.stop());
+  pauseOffset = 0;
   clearInterval(timer);
-  timer = null;
-  timeline.value = 0;
-  timeDisplay.textContent = "0:00";
+  document.getElementById("timeline").value = 0;
+  document.getElementById("timeDisplay").textContent = "0:00";
 }
 
 function updateTimeline() {
-  timeline.value = dr.currentTime;
-  timeDisplay.textContent = formatTime(dr.currentTime);
+  const current = context.currentTime - startTime;
+  pauseOffset = current;
+  document.getElementById("timeline").value = current;
+  document.getElementById("timeDisplay").textContent = formatTime(current);
 }
 
-timeline.oninput = function() {
-  tracks.forEach(t => t.currentTime = this.value);
+document.getElementById("timeline").oninput = function() {
+  pauseOffset = this.value;
+  stopAll();
+  playAll();
 };
 
 function formatTime(sec) {
@@ -154,6 +125,15 @@ function formatTime(sec) {
   const s = Math.floor(sec % 60).toString().padStart(2, "0");
   return m + ":" + s;
 }
+
+// ボリューム制御
+document.getElementById("volDr").oninput = e => gainNodes.dr.gain.value = e.target.value;
+document.getElementById("volBa").oninput = e => gainNodes.ba.gain.value = e.target.value;
+document.getElementById("volGt1").oninput = e => gainNodes.gt1.gain.value = e.target.value;
+document.getElementById("volGt2").oninput = e => gainNodes.gt2.gain.value = e.target.value;
+document.getElementById("volPi").oninput = e => gainNodes.pi.gain.value = e.target.value;
+document.getElementById("volVo1").oninput = e => gainNodes.vo1.gain.value = e.target.value;
+document.getElementById("volVo2").oninput = e => gainNodes.vo2.gain.value = e.target.value;
 </script>
 
 </body>
