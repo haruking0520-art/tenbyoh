@@ -52,7 +52,7 @@ const files = {
   vo2: "Vo2.mp3"
 };
 
-// mp3ロード関数
+// mp3ロード
 async function loadAudio() {
   if (!context) context = new (window.AudioContext || window.webkitAudioContext)();
   await context.resume();
