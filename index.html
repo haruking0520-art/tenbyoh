@@ -1,3 +1,73 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Band Practice Mixer</title>
+
+<style>
+
+body { font-family: Arial; text-align:center; background:#111; color:white; }
+
+.slider { width: 80%; margin:10px; }
+
+.timeline { width:90%; margin-top:20px; }
+
+button { padding:10px 20px; margin:10px; font-size:16px; border-radius:6px; border:none; cursor:pointer; }
+
+.play { background:#28a745; color:white; }
+
+.stop { background:#dc3545; color:white; }
+
+</style>
+
+</head>
+
+<body>
+
+
+
+<h2>🎸 Band Practice Mixer</h2>
+
+
+
+<div>Drums<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volDr"></div>
+
+<div>Bass<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volBa"></div>
+
+<div>Guitar1<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volGt1"></div>
+
+<div>Guitar2<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volGt2"></div>
+
+<div>Piano<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volPi"></div>
+
+<div>Vocal1<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volVo1"></div>
+
+<div>Vocal2<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volVo2"></div>
+
+
+
+<input type="range" id="timeline" class="timeline" value="0" min="0" step="0.01">
+
+<br>
+
+<span id="timeDisplay">0:00</span>
+
+<br>
+
+<button class="play" id="btnPlay">▶ Play</button>
+
+<button class="stop" id="btnStop">■ Stop</button>
+
+
+
+<script>
+
 let context = null;
 let buffers = {};
 let gainNodes = {};
@@ -117,3 +187,8 @@ document.getElementById("volVo1").oninput = e => setVol('vo1', e.target.value);
 document.getElementById("volVo2").oninput = e => setVol('vo2', e.target.value);
 
 document.getElementById("btnPlay").onclick = playAll;
+</script>
+
+</body>
+
+</html>
