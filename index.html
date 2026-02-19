@@ -45,14 +45,14 @@ button {
 <button class="stop" onclick="stopAll()">■ Stop</button>
 
 <script>
-let context;
+let context = null;
 let buffers = {};
 let gainNodes = {};
 let sources = [];
 let startTime = 0;
 let pauseOffset = 0;
 let duration = 0;
-let timer;
+let timer = null;
 
 const files = {
   dr: "Dr.mp3",
@@ -64,26 +64,35 @@ const files = {
   vo2: "Vo2.mp3"
 };
 
-async function loadAudio() {
-  context = new (window.AudioContext || window.webkitAudioContext)();
+async function initAudio() {
 
-  for (let key in files) {
-    const response = await fetch(files[key]);
-    const arrayBuffer = await response.arrayBuffer();
-    buffers[key] = await context.decodeAudioData(arrayBuffer);
-
-    gainNodes[key] = context.createGain();
-    gainNodes[key].connect(context.destination);
+  // ★ ここが重要：ボタン押下時に作成
+  if (!context) {
+    context = new (window.AudioContext || window.webkitAudioContext)();
   }
 
-  duration = buffers["dr"].duration;
-  document.getElementById("timeline").max = duration;
+  await context.resume();
+
+  if (Object.keys(buffers).length === 0) {
+
+    for (let key in files) {
+      const response = await fetch(files[key]);
+      const arrayBuffer = await response.arrayBuffer();
+      buffers[key] = await context.decodeAudioData(arrayBuffer);
+
+      gainNodes[key] = context.createGain();
+      gainNodes[key].gain.value = 1;
+      gainNodes[key].connect(context.destination);
+    }
+
+    duration = buffers["dr"].duration;
+    document.getElementById("timeline").max = duration;
+  }
 }
 
 async function playAll() {
-  if (!context) await loadAudio();
 
-  await context.resume();
+  await initAudio();
 
   startTime = context.currentTime - pauseOffset;
   sources = [];
@@ -96,13 +105,16 @@ async function playAll() {
     sources.push(source);
   }
 
-  timer = setInterval(updateTimeline, 100);
+  if (!timer) {
+    timer = setInterval(updateTimeline, 100);
+  }
 }
 
 function stopAll() {
   sources.forEach(s => s.stop());
   pauseOffset = 0;
   clearInterval(timer);
+  timer = null;
   document.getElementById("timeline").value = 0;
   document.getElementById("timeDisplay").textContent = "0:00";
 }
@@ -127,13 +139,13 @@ function formatTime(sec) {
 }
 
 // ボリューム制御
-document.getElementById("volDr").oninput = e => gainNodes.dr.gain.value = e.target.value;
-document.getElementById("volBa").oninput = e => gainNodes.ba.gain.value = e.target.value;
-document.getElementById("volGt1").oninput = e => gainNodes.gt1.gain.value = e.target.value;
-document.getElementById("volGt2").oninput = e => gainNodes.gt2.gain.value = e.target.value;
-document.getElementById("volPi").oninput = e => gainNodes.pi.gain.value = e.target.value;
-document.getElementById("volVo1").oninput = e => gainNodes.vo1.gain.value = e.target.value;
-document.getElementById("volVo2").oninput = e => gainNodes.vo2.gain.value = e.target.value;
+document.getElementById("volDr").oninput = e => gainNodes.dr && (gainNodes.dr.gain.value = e.target.value);
+document.getElementById("volBa").oninput = e => gainNodes.ba && (gainNodes.ba.gain.value = e.target.value);
+document.getElementById("volGt1").oninput = e => gainNodes.gt1 && (gainNodes.gt1.gain.value = e.target.value);
+document.getElementById("volGt2").oninput = e => gainNodes.gt2 && (gainNodes.gt2.gain.value = e.target.value);
+document.getElementById("volPi").oninput = e => gainNodes.pi && (gainNodes.pi.gain.value = e.target.value);
+document.getElementById("volVo1").oninput = e => gainNodes.vo1 && (gainNodes.vo1.gain.value = e.target.value);
+document.getElementById("volVo2").oninput = e => gainNodes.vo2 && (gainNodes.vo2.gain.value = e.target.value);
 </script>
 
 </body>
