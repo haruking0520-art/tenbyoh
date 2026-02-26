@@ -19,7 +19,7 @@ body { font-family: Arial; text-align:center; background:#111; color:white; }
 .timeline { width:90%; margin-top:20px; }
 
 button { padding:10px 20px; margin:10px; font-size:16px; border-radius:6px; border:none; cursor:pointer; }
-
+button:disabled { background:#555; cursor: not-allowed; opacity: 0.6; }
 .play { background:#28a745; color:white; }
 
 .stop { background:#dc3545; color:white; }
@@ -59,7 +59,7 @@ button { padding:10px 20px; margin:10px; font-size:16px; border-radius:6px; bord
 <span id="timeDisplay">0:00</span>
 
 <br>
-
+<div id="status" style="color: #ffc107; font-weight: bold; margin: 10px; height: 1.2em;"></div>
 <button class="play" id="btnPlay">▶ Play</button>
 
 <button class="stop" id="btnStop">■ Stop</button>
@@ -88,10 +88,21 @@ const files = {
 };
 
 async function loadAudio() {
-  if (!context) context = new (window.AudioContext || window.webkitAudioContext)();
-  if (Object.keys(buffers).length > 0) return; // ロード済みならスキップ
+  if (!context) {
+    context = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (context.state === 'suspended') {
+    await context.resume();
+  }
+  
+  if (Object.keys(buffers).length > 0) return;
 
-  console.log("Loading audio...");
+  // --- 追加部分: ローディング表示開始 ---
+  const statusEl = document.getElementById("status");
+  const playBtn = document.getElementById("btnPlay");
+  statusEl.textContent = "⏳ 音源を読み込み中...";
+  playBtn.disabled = true; 
+
   for (let key in files) {
     try {
       const response = await fetch(files[key]);
@@ -103,9 +114,18 @@ async function loadAudio() {
       gainNodes[key] = gainNode;
     } catch (e) {
       console.error(`Failed to load ${files[key]}:`, e);
+      statusEl.textContent = `❌ ${files[key]} の読み込みに失敗`;
     }
   }
-  document.getElementById("timeline").max = buffers.dr.duration;
+
+  if (buffers.pi) {
+    document.getElementById("timeline").max = buffers.pi.duration;
+  }
+  
+  // --- 追加部分: 完了表示 ---
+  statusEl.textContent = "✅ 準備完了！";
+  playBtn.disabled = false;
+  setTimeout(() => { if(statusEl.textContent === "✅ 準備完了！") statusEl.textContent = ""; }, 3000);
 }
 
 async function playAll() {
