@@ -1,214 +1,418 @@
 <!DOCTYPE html>
-
 <html>
-
 <head>
-
 <meta charset="UTF-8">
-
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <title>Band Practice Mixer</title>
-
+<script src="https://cdn.jsdelivr.net/npm/midi-parser-js"></script>
 <style>
+    body { font-family: Arial; text-align:center; background:#111; color:white; }
+    .slider { width: 80%; margin:10px; }
+    .timeline { width:90%; margin-top:20px; }
+    button { padding:10px 20px; margin:10px; font-size:16px; border-radius:6px; border:none; cursor:pointer; }
+    button:disabled { background:#555; cursor: not-allowed; opacity: 0.6; }
+    .play { background:#28a745; color:white; }
+    .stop { background:#dc3545; color:white; }
 
-body { font-family: Arial; text-align:center; background:#111; color:white; }
+    /* スライダーを囲むグループ */
+    .control-group { margin-bottom: 20px; }
 
-.slider { width: 80%; margin:10px; }
-
-.timeline { width:90%; margin-top:20px; }
-
-button { padding:10px 20px; margin:10px; font-size:16px; border-radius:6px; border:none; cursor:pointer; }
-button:disabled { background:#555; cursor: not-allowed; opacity: 0.6; }
-.play { background:#28a745; color:white; }
-
-.stop { background:#dc3545; color:white; }
-
+    /* ドラムパネル関連 */
+    #drum-panel {
+        position: fixed; bottom: 20px; right: 20px; width: 300px;
+        background: rgba(0,0,0,0.8); border: 2px solid #555; border-radius: 8px;
+        z-index: 9999; overflow: hidden;
+    }
+    #drum-handle { background: #444; color: white; padding: 5px; font-size: 12px; cursor: move; text-align: center; }
+    #drum-content { position: relative; width: 100%; aspect-ratio: 4 / 3; }
+    .drum-base { width: 100%; display: block; }
+    .drum-part {
+        position: absolute; top: 0; left: 0; width: 100%;
+        mix-blend-mode: screen; opacity: 0; pointer-events: none; transition: opacity 0.05s;
+    }
+    .drum-part.active {
+        opacity: 1;
+        filter: brightness(2) contrast(1.5) drop-shadow(0 0 10px red);
+    }
+    #btnCloseDrum {
+        background: #666; border-radius: 3px; margin-left: 10px;
+        line-height: 18px; width: 20px; height: 20px; display: inline-block;
+    }
 </style>
-
 </head>
 
 <body>
-
-
-
 <h2>🎸バンド練習用簡易ミキサー</h2>
-<h3>🎵点描の唄🎵</h3>
+<div id="title"></div>
+<div>
+    🥁ドラム 
+    <button id="btnShowDrum" style="padding:2px 10px; font-size:12px; margin:0 0 0 10px;">👀</button>
+    <br>
+    <input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volDr">
+</div>
 
-
-<div>🥁ドラム<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volDr"></div>
-
-<div>🎸ベース<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volBa"></div>
-
-<div>🎸ギター1<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volGt1"></div>
-
-<div>🎸ギター2<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volGt2"></div>
-
-<div>🎹キーボード<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volPi"></div>
-
-<div>🎤ボーカル（女性）<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volVo1"></div>
-
-<div>🎤ボーカル（男性）<br><input class="slider" type="range" min="0" max="1" step="0.01" value="1" id="volVo2"></div>
-
-
+<div id="mixer-container"></div>
 
 <input type="range" id="timeline" class="timeline" value="0" min="0" step="0.01">
-
 <br>
-
 <span id="timeDisplay">0:00</span>
-
 <br>
 <div id="status" style="color: #ffc107; font-weight: bold; margin: 10px; height: 1.2em;"></div>
 <button class="play" id="btnPlay">▶ Play</button>
-
 <button class="stop" id="btnStop">■ Stop</button>
 
-
+<div style="margin: 10px;">
+  ♩= <input type="number" id="bpmInput" value="90" style="width: 50px; background: #333; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px;">
+</div>
 
 <script>
+// ==========================================
+// 🎸 【配布者用】一括管理テーブル
+// ==========================================
+const instrumentMaster = [
+    // 不要な楽器は行の頭に // を付けるだけで、画面からも音源からも消えます。楽器名は適宜修正してください。
+    { id: "ba",  name: "🎸 ベース",             file: "Ba.mp3",  defaultVol: 1.0 },
+    { id: "gt1", name: "🎸 ギター1",       file: "Gt1.mp3", defaultVol: 1.0 },
+    { id: "gt2", name: "🎸 ギター2",             file: "Gt2.mp3", defaultVol: 1.0 },
+    { id: "pi",  name: "🎹 キーボード",         file: "Pi.mp3",  defaultVol: 1.0 },
+    //{ id: "tp",  name: "🎺トランペット",         file: "Tp.mp3",  defaultVol: 1.0 },
+    //{ id: "tb",  name: "📯トロンボーン",         file: "Tb.mp3",  defaultVol: 1.0 },
+    //{ id: "sa",  name: "🎷サックス（テナー）",   file: "Sa.mp3",  defaultVol: 1.0 },
+    { id: "vo1", name: "🎤 ボーカル（女性）", file: "Vo1.mp3", defaultVol: 1.0 },
+    { id: "vo2", name: "🎤 ボーカル（男性）", file: "Vo2.mp3", defaultVol: 1.0 },
+    //{ id: "vo3", name: "🎤 ボーカル（男性ハモリ）", file: "Vo3.mp3", defaultVol: 1.0 },
+];
+const DRUM_FILE = "Dr.mp3"; // ドラム音源
+const SONG_TITLE = "<h3>🎵点描の唄🎵</h3>"; // 曲名
+const SONG_BPM = 75; // テンポ
 
+// ==========================================
+// 🚀 システム処理（自動連動）
+// ==========================================
 let context = null;
+let lastContextTime = 0;
 let buffers = {};
 let gainNodes = {};
 let sources = [];
-let startTime = 0;
 let pauseOffset = 0;
 let isPlaying = false;
 let timer = null;
+let lastProcessedTime = -1;
+let drumEvents = [];
 
-const files = {
-  dr: "Dr.mp3",
-  ba: "Ba.mp3",
-  gt1: "Gt1.mp3",
-  gt2: "Gt2.mp3",
-  pi: "Pi.mp3",
-  vo1: "Vo1.mp3",
-  vo2: "Vo2.mp3"
-};
+// 1. スライダーの自動生成
+const mixerContainer = document.getElementById('mixer-container');
+instrumentMaster.forEach(inst => {
+    const div = document.createElement('div');
+    div.className = 'control-group';
+    div.innerHTML = `${inst.name}<br><input class="slider" type="range" min="0" max="1" step="0.01" value="${inst.defaultVol}" id="vol-${inst.id}">`;
+    mixerContainer.appendChild(div);
+});
+
+
 
 async function loadAudio() {
-  if (!context) {
-    context = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (context.state === 'suspended') {
-    await context.resume();
-  }
-  
-  if (Object.keys(buffers).length > 0) return;
+    if (!context) context = new (window.AudioContext || window.webkitAudioContext)();
+    if (context.state === 'suspended') await context.resume();
+    if (Object.keys(buffers).length > 0) return;
 
-  // --- 追加部分: ローディング表示開始 ---
-  const statusEl = document.getElementById("status");
-  const playBtn = document.getElementById("btnPlay");
-  statusEl.textContent = "⏳ 音源を読み込み中...";
-  playBtn.disabled = true; 
+    const statusEl = document.getElementById("status");
+    const playBtn = document.getElementById("btnPlay");
+    statusEl.textContent = "⏳ 音源を読み込み中...";
+    playBtn.disabled = true;
 
-  for (let key in files) {
-    try {
-      const response = await fetch(files[key]);
-      const arrayBuffer = await response.arrayBuffer();
-      buffers[key] = await context.decodeAudioData(arrayBuffer);
+    // 全音源リスト作成（ドラム + マスターテーブル）
+    const loadList = [{ id: 'dr', file: DRUM_FILE }, ...instrumentMaster];
 
-      const gainNode = context.createGain();
-      gainNode.connect(context.destination);
-      gainNodes[key] = gainNode;
-    } catch (e) {
-      console.error(`Failed to load ${files[key]}:`, e);
-      statusEl.textContent = `❌ ${files[key]} の読み込みに失敗`;
+    for (let item of loadList) {
+        try {
+            const response = await fetch(item.file);
+            const arrayBuffer = await response.arrayBuffer();
+            buffers[item.id] = await context.decodeAudioData(arrayBuffer);
+
+            const gainNode = context.createGain();
+            gainNode.connect(context.destination);
+            // 初期音量を反映
+            gainNode.gain.value = item.id === 'dr' ? 1.0 : item.defaultVol;
+            gainNodes[item.id] = gainNode;
+        } catch (e) {
+            console.error(`Failed to load ${item.file}:`, e);
+            statusEl.textContent = `❌ ${item.file} の読み込みに失敗`;
+        }
     }
-  }
 
-  if (buffers.pi) {
-    document.getElementById("timeline").max = buffers.pi.duration;
-  }
-  
-  // --- 追加部分: 完了表示 ---
-  statusEl.textContent = "✅ 準備完了！";
-  playBtn.disabled = false;
-  setTimeout(() => { if(statusEl.textContent === "✅ 準備完了！") statusEl.textContent = ""; }, 3000);
+    if (buffers.dr) document.getElementById("timeline").max = buffers.dr.duration;
+    statusEl.textContent = "✅ 準備完了！";
+    playBtn.disabled = false;
+    setTimeout(() => { if(statusEl.textContent === "✅ 準備完了！") statusEl.textContent = ""; }, 3000);
 }
 
+// 音量スライダーの連動
+document.getElementById("volDr").oninput = e => { if(gainNodes['dr']) gainNodes['dr'].gain.value = e.target.value; };
+instrumentMaster.forEach(inst => {
+    document.getElementById(`vol-${inst.id}`).oninput = e => {
+        if(gainNodes[inst.id]) gainNodes[inst.id].gain.value = e.target.value;
+    };
+});
+
 async function playAll() {
-  if (isPlaying) return; // 二重再生防止
-  await loadAudio();
-  await context.resume();
+    if (isPlaying) return;
+    await loadAudio();
+    await context.resume();
 
-  sources = [];
-  startTime = context.currentTime - pauseOffset;
+    const bpmInput = parseFloat(document.getElementById('bpmInput').value) || SONG_BPM;
+    const speedRatio = bpmInput / SONG_BPM;
 
-  for (let key in buffers) {
-    const src = context.createBufferSource();
-    src.buffer = buffers[key];
-    src.connect(gainNodes[key]);
-    // pauseOffset の位置から再生開始
-    src.start(0, pauseOffset % buffers[key].duration);
-    sources.push(src);
-  }
+    sources = [];
+    lastContextTime = context.currentTime;
 
-  isPlaying = true;
-  timer = setInterval(updateTimeline, 100);
+    for (let key in buffers) {
+        const src = context.createBufferSource();
+        src.buffer = buffers[key];
+        src.playbackRate.value = speedRatio;
+        src.preservesPitch = true;
+        src.connect(gainNodes[key]);
+        src.start(0, pauseOffset); 
+        sources.push(src);
+    }
+
+    isPlaying = true;
+    timer = setInterval(updateTimeline, 20);
 }
 
 function stopAll() {
-  sources.forEach(s => { try { s.stop(); } catch(e) {} });
-  sources = [];
-  isPlaying = false;
-  clearInterval(timer);
+    sources.forEach(s => { try { s.stop(); } catch(e) {} });
+    sources = [];
+    isPlaying = false;
+    clearInterval(timer);
 }
 
-// 停止ボタン：完全に最初に戻す
 document.getElementById("btnStop").onclick = () => {
-  stopAll();
-  pauseOffset = 0;
-  updateUI(0);
+    stopAll();
+    pauseOffset = 0;
+    updateUI(0);
 };
 
 function updateTimeline() {
-  if (!isPlaying) return;
-  pauseOffset = context.currentTime - startTime;
-  if (pauseOffset >= buffers.dr.duration) {
-      stopAll();
-      pauseOffset = 0;
-  }
-  updateUI(pauseOffset);
+    if (!isPlaying) return;
+    const now = context.currentTime;
+    const deltaTime = now - lastContextTime;
+    lastContextTime = now;
+
+    const speedRatio = (parseFloat(document.getElementById('bpmInput').value) || SONG_BPM) / SONG_BPM;
+    pauseOffset += deltaTime * speedRatio;
+    
+    if (pauseOffset < lastProcessedTime) lastProcessedTime = -1;
+
+    drumEvents.forEach(ev => {
+        if (ev.time > lastProcessedTime && ev.time <= pauseOffset) {
+            const el = document.getElementById('img-' + ev.part);
+            if (el) {
+                el.classList.add('active');
+                const duration = Math.max(30, 80 / speedRatio); 
+                setTimeout(() => el.classList.remove('active'), duration);
+            }
+        }
+    });
+    lastProcessedTime = pauseOffset;
+
+    if (buffers.dr && pauseOffset >= buffers.dr.duration) {
+        stopAll();
+        pauseOffset = 0;
+        lastProcessedTime = -1;
+    }
+    updateUI(pauseOffset);
 }
 
 function updateUI(val) {
-  document.getElementById("timeline").value = val;
-  document.getElementById("timeDisplay").textContent = formatTime(val);
+    document.getElementById("timeline").value = val;
+    document.getElementById("timeDisplay").textContent = formatTime(val);
 }
 
-// タイムライン操作
 document.getElementById("timeline").oninput = function() {
-  const wasPlaying = isPlaying;
-  stopAll();
-  pauseOffset = parseFloat(this.value);
-  updateUI(pauseOffset);
-  if (wasPlaying) playAll(); // 再生中だったらその場所から再開
+    const wasPlaying = isPlaying;
+    stopAll();
+    pauseOffset = parseFloat(this.value);
+    updateUI(pauseOffset);
+    if (wasPlaying) playAll();
 };
 
 function formatTime(sec) {
-  const m = Math.floor(sec/60);
-  const s = Math.floor(sec%60).toString().padStart(2,"0");
-  return m + ":" + s;
+    const m = Math.floor(sec/60);
+    const s = Math.floor(sec%60).toString().padStart(2,"0");
+    return m + ":" + s;
 }
-
-// ボリューム操作（初期値反映用）
-function setVol(key, val) {
-  if (gainNodes[key]) gainNodes[key].gain.value = val;
-}
-
-document.getElementById("volDr").oninput = e => setVol('dr', e.target.value);
-document.getElementById("volBa").oninput = e => setVol('ba', e.target.value);
-document.getElementById("volGt1").oninput = e => setVol('gt1', e.target.value);
-document.getElementById("volGt2").oninput = e => setVol('gt2', e.target.value);
-document.getElementById("volPi").oninput = e => setVol('pi', e.target.value);
-document.getElementById("volVo1").oninput = e => setVol('vo1', e.target.value);
-document.getElementById("volVo2").oninput = e => setVol('vo2', e.target.value);
 
 document.getElementById("btnPlay").onclick = playAll;
+
+// MIDI解析 (BPM固定)
+async function loadAndParseMidi() {
+    try {
+        const response = await fetch('Drum_Kit.mid');
+        const arrayBuffer = await response.arrayBuffer();
+        const midiData = MidiParser.parse(new Uint8Array(arrayBuffer));
+        const ticksPerBeat = midiData.timeDivision;
+        const secondsPerTick = 60 / (SONG_BPM * ticksPerBeat);
+
+        let tempEvents = [];
+        midiData.track.forEach(track => {
+            let currentTick = 0;
+            track.event.forEach(event => {
+                currentTick += event.deltaTime;
+                if (event.type === 9 && event.data[1] > 0) {
+                    const note = event.data[0];
+                    const time = currentTick * secondsPerTick;
+                    let part = '';
+                    if (note === 36) part = 'kick';
+                    if (note === 37) part = 'sidestick';
+                    if (note === 38) part = 'snare';
+                    if (note === 42) part = 'HiHatClose';
+                    if (note === 43) part = 'tamFloor';
+                    if (note === 44) part = 'HiHatPedal';
+                    if (note === 46) part = 'HiHatOpen';
+                    if (note === 47) part = 'tamLo';
+                    if (note === 48) part = 'tamHi';
+                    if (note === 49) part = 'cr1';
+                    if (note === 51) part = 'ride';
+                    if (note === 55) part = 'cr2';
+                    if (part) tempEvents.push({ time: time, part: part });
+                }
+            });
+        });
+        drumEvents = tempEvents.sort((a, b) => a.time - b.time);
+    } catch (e) { console.error("MIDI解析エラー:", e); }
+}
+loadAndParseMidi();
+
+// パネルのドラッグ・開閉処理
+window.onload = () => {
+    const panel = document.getElementById('drum-panel');
+    const handle = document.getElementById('drum-handle');
+    const btnShow = document.getElementById('btnShowDrum');
+    const btnClose = document.getElementById('btnCloseDrum');
+
+    btnShow.onclick = () => { panel.style.display = 'block'; };
+    btnClose.onclick = (e) => { e.stopPropagation(); panel.style.display = 'none'; };
+
+    let isDragging = false;
+    let startX, startY;
+
+    const startDragging = (e) => {
+        if (e.target.id === 'btnCloseDrum') return;
+        isDragging = true;
+        const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+        const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+        startX = clientX - panel.offsetLeft;
+        startY = clientY - panel.offsetTop;
+        handle.style.cursor = 'grabbing';
+        if (e.cancelable) e.preventDefault();
+    };
+
+    const moveDragging = (e) => {
+        if (!isDragging) return;
+        const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+        const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+        panel.style.left = (clientX - startX) + 'px';
+        panel.style.top = (clientY - startY) + 'px';
+        panel.style.bottom = 'auto';
+        panel.style.right = 'auto';
+        if (e.cancelable) e.preventDefault();
+    };
+
+    const stopDragging = () => { isDragging = false; handle.style.cursor = 'move'; };
+
+    handle.addEventListener('mousedown', startDragging);
+    window.addEventListener('mousemove', moveDragging);
+    window.addEventListener('mouseup', stopDragging);
+    handle.addEventListener('touchstart', startDragging, { passive: false });
+    window.addEventListener('touchmove', moveDragging, { passive: false });
+    window.addEventListener('touchend', stopDragging, { passive: false });
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('title').innerHTML = SONG_TITLE;
+    
+    // 🟢 追加：画面の入力欄に設定したBPMをセット
+    const bpmInput = document.getElementById('bpmInput');
+    if (bpmInput) bpmInput.value = SONG_BPM;
+
+    initUI();
+    loadAndParseMidi();
+});
+document.getElementById('bpmInput').addEventListener('input', () => {
+    const newBpm = parseFloat(document.getElementById('bpmInput').value) || SONG_BPM;
+    const newRatio = newBpm / SONG_BPM;
+
+    // 1. 今鳴っている楽器すべての速度を更新
+    sources.forEach(src => {
+        src.playbackRate.value = newRatio;
+    });
+
+    // 2. ドラムビジュアライザーの計算用にもlastContextTimeなどを調整（ズレ防止）
+    // ※再生中のupdate関数内で自動的にnewRatioが使われるようになります
+    console.log("⚡ テンポをリアルタイム変更:", newBpm);
+});
+
+async function logMidiNotes() {
+    try {
+        const response = await fetch('Drum_Kit.mid');
+        const arrayBuffer = await response.arrayBuffer();
+        const midiData = MidiParser.parse(new Uint8Array(arrayBuffer));
+
+        console.log("%c--- MIDI使用ノート番号スキャン開始 ---", "color: #00ff00; font-weight: bold;");
+
+        midiData.track.forEach((track, index) => {
+            let trackName = "Unnamed Track";
+            let notes = new Set();
+
+            track.event.forEach(event => {
+                // トラック名 (metaType: 3)
+                if (event.metaType === 3) trackName = event.data;
+                
+                // ノートオン (type: 9) かつ ベロシティ > 0
+                if (event.type === 9 && event.data[1] > 0) {
+                    notes.add(event.data[0]);
+                }
+            });
+
+            if (notes.size > 0) {
+                const sortedNotes = Array.from(notes).sort((a, b) => a - b);
+                console.log(`Track [${index}] %c${trackName}`, "color: #ffcc00;");
+                console.log(`  👉 使用ノート: ${sortedNotes.join(", ")} (${notes.size}種類)`);
+            }
+        });
+
+        console.log("%c--- スキャン終了 ---", "color: #00ff00; font-weight: bold;");
+    } catch (e) {
+        console.error("MIDIスキャン失敗:", e);
+    }
+}
+
+// 実行
+logMidiNotes();
+
 </script>
 
+<div id="drum-panel" style="display: none;">
+    <div id="drum-handle">
+        Drum Visualizer
+        <span id="btnCloseDrum" style="float:right; cursor:pointer; font-weight:bold;">×</span>
+    </div>
+    <div id="drum-content">
+        <img src="drum/drum_base.png" class="drum-base">
+        <img id="img-snare" src="drum/snare.png" class="drum-part">
+        <img id="img-kick" src="drum/kick.png" class="drum-part">
+        <img id="img-ride" src="drum/ride.png" class="drum-part">
+        <img id="img-HiHatClose" src="drum/HiHatClose.png" class="drum-part">
+        <img id="img-HiHatOpen" src="drum/HiHatOpen.png" class="drum-part">
+        <img id="img-HiHatPedal" src="drum/HiHatPedal.png" class="drum-part">
+        <img id="img-tamLo" src="drum/tamLo.png" class="drum-part">
+        <img id="img-tamHi" src="drum/tamHi.png" class="drum-part">
+        <img id="img-tamFloor" src="drum/tamFloor.png" class="drum-part">
+        <img id="img-cr1" src="drum/cr1.png" class="drum-part">
+        <img id="img-cr2" src="drum/cr2.png" class="drum-part">
+        <img id="img-sidestick" src="drum/sidestick.png" class="drum-part">
+    </div>
+</div>
 </body>
-
 </html>
